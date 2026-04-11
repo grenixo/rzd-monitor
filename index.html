@@ -505,6 +505,63 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(.5); }
 /* ── Loading ── */
 /* spinner replaced by lucide loader */
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Login overlay ── */
+#loginOverlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+}
+#loginOverlay.show { display: flex; }
+.login-box {
+  width: 100%;
+  max-width: 360px;
+  padding: 40px 32px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin: 0 16px;
+}
+.login-logo {
+  font-family: 'Unbounded', sans-serif;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+.login-logo span { color: var(--muted); font-weight: 400; }
+.login-subtitle {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 28px;
+}
+.login-error {
+  font-size: 12px;
+  color: var(--red);
+  margin-top: 10px;
+  min-height: 18px;
+}
+/* ── Logout button ── */
+.logout-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all .2s;
+  margin-left: 10px;
+}
+.logout-btn:hover { border-color: var(--red); color: var(--red); }
 </style>
 </head>
 <body>
@@ -516,6 +573,9 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(.5); }
       <div class="dot"></div>
       <span id="monitorLabel">мониторинг выкл</span>
     </div>
+    <button class="logout-btn" id="logoutBtn" onclick="logout()" title="Выйти" style="display:none">
+      <i data-lucide="log-out" width="14" height="14"></i> Выйти
+    </button>
   </header>
 
   <nav>
@@ -650,6 +710,33 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(.5); }
           <span class="save-msg" id="saveMsg"><i data-lucide="check" width="14" height="14" style="vertical-align:middle;margin-right:4px"></i>Сохранено</span>
         </div>
       </div>
+
+      <div class="card" style="margin-top:16px">
+        <div class="settings-section" style="margin-bottom:0">
+          <h3>Доступ к приложению</h3>
+          <div class="form-row single">
+            <div class="form-group">
+              <label>ТЕКУЩИЙ ПАРОЛЬ</label>
+              <input id="currentPw" type="password" placeholder="Оставьте пустым, если пароля нет">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>НОВЫЙ ПАРОЛЬ</label>
+              <input id="newPw" type="password" placeholder="Оставьте пустым, чтобы снять защиту">
+            </div>
+            <div class="form-group">
+              <label>ПОВТОРИТЕ ПАРОЛЬ</label>
+              <input id="confirmPw" type="password" placeholder="">
+            </div>
+          </div>
+          <div class="save-bar">
+            <button class="btn" onclick="changePassword()">Сменить пароль</button>
+            <span class="save-msg" id="pwMsg" style="color:var(--success)"></span>
+            <span class="save-msg" id="pwErr" style="color:var(--red)"></span>
+          </div>
+        </div>
+      </div>
     </div>
 
   </main>
@@ -694,6 +781,23 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(.5); }
   </div>
 </div>
 
+<!-- LOGIN OVERLAY -->
+<div id="loginOverlay">
+  <div class="login-box">
+    <div class="login-logo">РЖД<span>.</span>monitor</div>
+    <div class="login-subtitle">Введите пароль для доступа</div>
+    <div class="form-group">
+      <label>ПАРОЛЬ</label>
+      <input id="loginPw" type="password" placeholder="••••••••"
+             onkeydown="if(event.key==='Enter') doLogin()">
+    </div>
+    <div style="margin-top:14px">
+      <button class="btn btn-accent" style="width:100%" onclick="doLogin()">Войти</button>
+    </div>
+    <div class="login-error" id="loginError"></div>
+  </div>
+</div>
+
 <!-- BOTTOM NAV (mobile) -->
 <div class="bottom-nav">
   <div class="bottom-nav-inner">
@@ -721,12 +825,96 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(.5); }
 let config = {};
 let newDates = [];
 
+// ── Auth ──────────────────────────────────────────────────────────
+function showLoginScreen() {
+  document.getElementById('loginOverlay').classList.add('show');
+  document.getElementById('loginError').textContent = '';
+  setTimeout(() => document.getElementById('loginPw').focus(), 50);
+}
+
+function hideLoginScreen() {
+  document.getElementById('loginOverlay').classList.remove('show');
+}
+
+async function doLogin() {
+  const pw = document.getElementById('loginPw').value;
+  const r = await fetch('/api/login', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({password: pw})
+  });
+  if (r.ok) {
+    document.getElementById('loginPw').value = '';
+    hideLoginScreen();
+    await initApp();
+  } else {
+    document.getElementById('loginError').textContent = 'Неверный пароль';
+    document.getElementById('loginPw').select();
+  }
+}
+
+async function logout() {
+  await fetch('/api/logout', {method: 'POST'});
+  document.getElementById('logoutBtn').style.display = 'none';
+  showLoginScreen();
+}
+
+async function changePassword() {
+  const currentPw = document.getElementById('currentPw').value;
+  const newPw     = document.getElementById('newPw').value;
+  const confirmPw = document.getElementById('confirmPw').value;
+  const msgOk  = document.getElementById('pwMsg');
+  const msgErr = document.getElementById('pwErr');
+  msgOk.classList.remove('show');
+  msgErr.classList.remove('show');
+
+  if (newPw && newPw !== confirmPw) {
+    msgErr.textContent = 'Пароли не совпадают';
+    msgErr.classList.add('show');
+    return;
+  }
+  const r = await fetch('/api/change_password', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({current_password: currentPw, new_password: newPw})
+  });
+  const d = await r.json();
+  if (d.ok) {
+    document.getElementById('currentPw').value = '';
+    document.getElementById('newPw').value = '';
+    document.getElementById('confirmPw').value = '';
+    msgOk.textContent = newPw ? 'Пароль изменён' : 'Защита снята';
+    msgOk.classList.add('show');
+    setTimeout(() => msgOk.classList.remove('show'), 3000);
+    // Показываем/скрываем кнопку выхода в зависимости от наличия пароля
+    document.getElementById('logoutBtn').style.display = newPw ? '' : 'none';
+  } else {
+    msgErr.textContent = d.error || 'Ошибка';
+    msgErr.classList.add('show');
+  }
+}
+
 // ── Init ─────────────────────────────────────────────────────────
 async function init() {
+  lucide.createIcons();
+  const r = await fetch('/api/me');
+  const me = await r.json();
+  if (!me.authenticated) {
+    showLoginScreen();
+    lucide.createIcons();
+    return;
+  }
+  if (me.has_password) {
+    document.getElementById('logoutBtn').style.display = '';
+    lucide.createIcons();
+  }
+  await initApp();
+}
+
+async function initApp() {
   await loadConfig();
   renderRoutes();
   lucide.createIcons();
-  // Ставим сегодня в поле даты
   const today = new Date().toISOString().split('T')[0];
   document.getElementById('checkDate').value = today;
   document.getElementById('newDateInput').value = today;

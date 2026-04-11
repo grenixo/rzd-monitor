@@ -5,8 +5,9 @@
 Открыть: http://<IP>:5000
 """
 
-from flask import Flask, jsonify, request, send_from_directory
-import json, os, time, smtplib, threading, logging
+from flask import Flask, jsonify, request, send_from_directory, session
+from functools import wraps
+import json, os, time, smtplib, threading, logging, hashlib, secrets
 from datetime import datetime, timedelta
 from collections import defaultdict
 from email.mime.text import MIMEText
@@ -30,12 +31,15 @@ log = logging.getLogger()
 # ── Конфиг ────────────────────────────────────────────────────────
 
 DEFAULT_CONFIG = {
-    "smtp_host":     "smtp.gmail.com",
-    "smtp_port":     587,
-    "smtp_user":     "",
-    "smtp_password": "",
-    "monitoring":    False,
-    "interval_min":  5,
+    "smtp_host":         "smtp.gmail.com",
+    "smtp_port":         587,
+    "smtp_user":         "",
+    "smtp_password":     "",
+    "monitoring":        False,
+    "interval_min":      5,
+    "secret_key":        "",
+    "ui_password_hash":  "",
+    "ui_password_salt":  "",
     "routes": [
         {
             "id":        "1",
@@ -89,6 +93,35 @@ def save_history(history):
     history = [h for h in history if h.get("ts", "") >= cutoff]
     with open(HISTORY_FILE, "w") as f:
         json.dump(history, f, ensure_ascii=False, indent=2)
+
+# ── Auth ──────────────────────────────────────────────────────────
+
+def _init_secret_key():
+    cfg = load_config()
+    if not cfg.get("secret_key"):
+        cfg["secret_key"] = secrets.token_hex(32)
+        save_config(cfg)
+    return cfg["secret_key"]
+
+app.secret_key = _init_secret_key()
+
+def hash_password(password, salt=None):
+    if salt is None:
+        salt = secrets.token_hex(16)
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 100_000)
+    return dk.hex(), salt
+
+def verify_password(password, hashed, salt):
+    return hash_password(password, salt)[0] == hashed
+
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        cfg = load_config()
+        if cfg.get("ui_password_hash") and not session.get("authenticated"):
+            return jsonify({"error": "Unauthorized"}), 401
+        return f(*args, **kwargs)
+    return decorated
 
 # ── РЖД API ───────────────────────────────────────────────────────
 
@@ -294,6 +327,7 @@ def index():
     return send_from_directory(".", "index.html")
 
 @app.route("/api/config", methods=["GET"])
+@login_required
 def get_config():
     cfg = load_config()
     safe = {k: v for k, v in cfg.items() if k != "smtp_password"}
@@ -302,6 +336,7 @@ def get_config():
     return jsonify(safe)
 
 @app.route("/api/config", methods=["POST"])
+@login_required
 def update_config():
     cfg  = load_config()
     data = request.json
@@ -314,10 +349,12 @@ def update_config():
     return jsonify({"ok": True})
 
 @app.route("/api/routes", methods=["GET"])
+@login_required
 def get_routes():
     return jsonify(load_config().get("routes", []))
 
 @app.route("/api/routes", methods=["POST"])
+@login_required
 def add_route():
     cfg   = load_config()
     route = request.json
@@ -327,6 +364,7 @@ def add_route():
     return jsonify({"ok": True, "id": route["id"]})
 
 @app.route("/api/routes/<route_id>", methods=["PUT"])
+@login_required
 def update_route(route_id):
     cfg = load_config()
     for i, r in enumerate(cfg["routes"]):
@@ -337,6 +375,7 @@ def update_route(route_id):
     return jsonify({"ok": True})
 
 @app.route("/api/routes/<route_id>", methods=["DELETE"])
+@login_required
 def delete_route(route_id):
     cfg = load_config()
     cfg["routes"] = [r for r in cfg["routes"] if r["id"] != route_id]
@@ -344,10 +383,12 @@ def delete_route(route_id):
     return jsonify({"ok": True})
 
 @app.route("/api/monitoring", methods=["GET"])
+@login_required
 def get_monitoring():
     return jsonify({"active": monitor_thread is not None and monitor_thread.is_alive()})
 
 @app.route("/api/monitoring", methods=["POST"])
+@login_required
 def toggle_monitoring():
     data = request.json
     cfg  = load_config()
@@ -362,6 +403,7 @@ def toggle_monitoring():
     return jsonify({"ok": True, "active": data.get("active")})
 
 @app.route("/api/check_now", methods=["POST"])
+@login_required
 def check_now():
     """Ручная немедленная проверка одного маршрута/даты."""
     data      = request.json
@@ -375,6 +417,7 @@ def check_now():
     return jsonify({"trains": trains, "error": err_msg})
 
 @app.route("/api/history", methods=["GET"])
+@login_required
 def get_history():
     hist = load_history()
     days = int(request.args.get("days", 1))
@@ -383,11 +426,13 @@ def get_history():
     return jsonify(list(reversed(hist)))
 
 @app.route("/api/history", methods=["DELETE"])
+@login_required
 def clear_history():
     save_history([])
     return jsonify({"ok": True})
 
 @app.route("/api/test_email", methods=["POST"])
+@login_required
 def test_email():
     cfg      = load_config()
     data     = request.json or {}
@@ -398,6 +443,7 @@ def test_email():
     return jsonify({"ok": ok})
 
 @app.route("/api/station_search", methods=["GET"])
+@login_required
 def station_search():
     """Поиск станции по названию через API РЖД."""
     q = request.args.get("q", "")
@@ -447,6 +493,51 @@ def station_search():
     except Exception as e:
         log.error(f"station_search error: {e}")
         return jsonify([])
+
+@app.route("/api/me", methods=["GET"])
+def get_me():
+    cfg = load_config()
+    has_password = bool(cfg.get("ui_password_hash"))
+    authenticated = not has_password or bool(session.get("authenticated"))
+    return jsonify({"authenticated": authenticated, "has_password": has_password})
+
+@app.route("/api/login", methods=["POST"])
+def api_login():
+    data = request.json or {}
+    password = data.get("password", "")
+    cfg = load_config()
+    if not cfg.get("ui_password_hash"):
+        session["authenticated"] = True
+        return jsonify({"ok": True})
+    if verify_password(password, cfg["ui_password_hash"], cfg["ui_password_salt"]):
+        session["authenticated"] = True
+        return jsonify({"ok": True})
+    return jsonify({"ok": False, "error": "Неверный пароль"}), 401
+
+@app.route("/api/logout", methods=["POST"])
+def api_logout():
+    session.pop("authenticated", None)
+    return jsonify({"ok": True})
+
+@app.route("/api/change_password", methods=["POST"])
+@login_required
+def change_password():
+    data = request.json or {}
+    current = data.get("current_password", "")
+    new_pw  = data.get("new_password", "")
+    cfg = load_config()
+    if cfg.get("ui_password_hash"):
+        if not verify_password(current, cfg["ui_password_hash"], cfg["ui_password_salt"]):
+            return jsonify({"ok": False, "error": "Неверный текущий пароль"}), 401
+    if new_pw:
+        hashed, salt = hash_password(new_pw)
+        cfg["ui_password_hash"] = hashed
+        cfg["ui_password_salt"] = salt
+    else:
+        cfg["ui_password_hash"] = ""
+        cfg["ui_password_salt"] = ""
+    save_config(cfg)
+    return jsonify({"ok": True})
 
 if __name__ == "__main__":
     # Восстанавливаем мониторинг если был включён
