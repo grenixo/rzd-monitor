@@ -123,6 +123,40 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated
 
+# ── Brute-force protection ────────────────────────────────────────
+
+_MAX_ATTEMPTS  = 5
+_LOCKOUT_SEC   = 15 * 60   # 15 минут
+_login_attempts: dict = {}  # {ip: {"count": int, "locked_until": float}}
+
+def _get_ip():
+    return request.headers.get("X-Forwarded-For", request.remote_addr).split(",")[0].strip()
+
+def _check_rate_limit():
+    """Возвращает (ok, seconds_left). ok=False если IP заблокирован."""
+    ip  = _get_ip()
+    now = time.time()
+    rec = _login_attempts.get(ip)
+    if rec and rec["locked_until"] > now:
+        return False, int(rec["locked_until"] - now)
+    return True, 0
+
+def _record_failure():
+    ip  = _get_ip()
+    now = time.time()
+    rec = _login_attempts.setdefault(ip, {"count": 0, "locked_until": 0})
+    # Сбрасываем счётчик если предыдущая блокировка уже истекла
+    if rec["locked_until"] and rec["locked_until"] < now:
+        rec["count"] = 0
+        rec["locked_until"] = 0
+    rec["count"] += 1
+    if rec["count"] >= _MAX_ATTEMPTS:
+        rec["locked_until"] = now + _LOCKOUT_SEC
+        log.warning(f"Login brute-force: IP {ip} заблокирован на {_LOCKOUT_SEC // 60} мин")
+
+def _reset_attempts():
+    _login_attempts.pop(_get_ip(), None)
+
 # ── РЖД API ───────────────────────────────────────────────────────
 
 rzd_session = req.Session()
@@ -503,6 +537,11 @@ def get_me():
 
 @app.route("/api/login", methods=["POST"])
 def api_login():
+    ok, seconds_left = _check_rate_limit()
+    if not ok:
+        mins = (seconds_left + 59) // 60
+        return jsonify({"ok": False, "error": f"Слишком много попыток. Подождите {mins} мин."}), 429
+
     data = request.json or {}
     password = data.get("password", "")
     cfg = load_config()
@@ -510,9 +549,16 @@ def api_login():
         session["authenticated"] = True
         return jsonify({"ok": True})
     if verify_password(password, cfg["ui_password_hash"], cfg["ui_password_salt"]):
+        _reset_attempts()
         session["authenticated"] = True
         return jsonify({"ok": True})
-    return jsonify({"ok": False, "error": "Неверный пароль"}), 401
+    _record_failure()
+    rec = _login_attempts.get(_get_ip(), {})
+    if rec.get("locked_until", 0) > time.time():
+        mins = _LOCKOUT_SEC // 60
+        return jsonify({"ok": False, "error": f"Слишком много попыток. Подождите {mins} мин."}), 429
+    left = _MAX_ATTEMPTS - rec.get("count", 0)
+    return jsonify({"ok": False, "error": f"Неверный пароль. Осталось попыток: {left}"}), 401
 
 @app.route("/api/logout", methods=["POST"])
 def api_logout():
