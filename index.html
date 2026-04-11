@@ -1,0 +1,1217 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>РЖД Монитор</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Unbounded:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<style>
+:root {
+  --bg:       #0d0f14;
+  --surface:  #151820;
+  --surface2: #1c2030;
+  --border:   #252a38;
+  --accent:   #e8ff5a;
+  --accent2:  #5af0e8;
+  --red:      #ff5a5a;
+  --text:     #e8eaf0;
+  --muted:    #6b7280;
+  --success:  #5af0a0;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  min-height: 100vh;
+}
+/* ── Layout ── */
+.shell {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  grid-template-rows: 56px 1fr;
+  min-height: 100vh;
+}
+/* ── Header ── */
+header {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.logo {
+  font-family: 'Unbounded', sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: -0.5px;
+}
+.logo span { color: var(--muted); font-weight: 400; }
+.status-pill {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 14px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all .2s;
+  user-select: none;
+}
+.status-pill.active {
+  border-color: var(--success);
+  color: var(--success);
+  background: rgba(90,240,160,.07);
+}
+.status-pill:hover { border-color: var(--accent); }
+.dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.status-pill.active .dot {
+  background: var(--success);
+  box-shadow: 0 0 6px var(--success);
+  animation: pulse 2s infinite;
+}
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+/* ── Sidebar (desktop) ── */
+nav {
+  border-right: 1px solid var(--border);
+  padding: 16px 0;
+  background: var(--surface);
+}
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all .15s;
+  border-left: 2px solid transparent;
+  font-size: 12px;
+}
+.nav-item:hover { color: var(--text); background: var(--surface2); }
+.nav-item.active {
+  color: var(--accent);
+  border-left-color: var(--accent);
+  background: rgba(232,255,90,.04);
+}
+.nav-icon, .nav-item i { flex-shrink: 0; }
+
+/* ── Bottom nav (mobile) ── */
+.bottom-nav {
+  display: none;
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  z-index: 20;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.bottom-nav-inner {
+  display: flex;
+  justify-content: space-around;
+}
+.bnav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 10px 0;
+  flex: 1;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 10px;
+  transition: color .15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.bnav-item.active { color: var(--accent); }
+.bnav-item i { display: block; }
+
+/* ── Main ── */
+main { padding: 20px; overflow-y: auto; }
+.page { display: none; }
+.page.active { display: block; }
+
+/* ── Mobile overrides ── */
+@media (max-width: 640px) {
+  .shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: 52px 1fr;
+  }
+  nav { display: none; }
+  .bottom-nav { display: block; }
+  main {
+    padding: 16px 12px 80px;
+  }
+  header { padding: 0 16px; }
+  .logo { font-size: 13px; }
+  .status-pill { font-size: 10px; padding: 4px 10px; }
+
+
+
+  /* form rows — одна колонка */
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  /* history — упрощённый вид */
+
+
+  /* time block в результатах */
+  .time-block { flex-wrap: wrap; gap: 6px; }
+  .time { font-size: 18px; }
+
+  /* таблица вагонов — убираем колонку деталей */
+  .cars-table .hide-mobile { display: none; }
+
+  /* модалка на весь экран */
+  .modal {
+    width: 100%;
+    max-width: 100%;
+    border-radius: 16px 16px 0 0;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    max-height: 90vh;
+    overflow-y: visible;
+  }
+  .modal-scroll {
+    overflow-y: auto;
+    max-height: calc(90vh - 48px);
+  }
+  .modal-backdrop {
+    align-items: flex-end;
+  }
+
+  /* карточка поезда */
+  .train-result { padding: 12px; }
+  .add-btn-text { display: none; }
+  .add-btn { width: 40px; height: 40px; padding: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+}
+
+/* ── Cards ── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+.card-title {
+  font-family: 'Unbounded', sans-serif;
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-bottom: 16px;
+}
+
+/* ── Routes ── */
+.route-card {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 16px;
+  margin-bottom: 10px;
+}
+.route-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.route-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+.route-arrow { color: var(--accent); }
+.badge {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  border: 1px solid;
+}
+.badge-on  { border-color: var(--success); color: var(--success); }
+.badge-off { border-color: var(--muted);   color: var(--muted); }
+.dates-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.date-chip {
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.date-chip .rm {
+  cursor: pointer;
+  color: var(--red);
+  font-size: 13px;
+  line-height: 1;
+}
+.route-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* ── Icon buttons ── */
+.icon-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  color: var(--muted);
+  transition: color .15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+.icon-btn:hover { color: var(--text); }
+.icon-btn-danger:hover { color: var(--red); }
+.icon-btn svg { display: block; }
+
+/* ── Buttons ── */
+.btn {
+  padding: 7px 14px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all .15s;
+  white-space: nowrap;
+}
+.btn:hover { background: var(--surface2); border-color: var(--accent); color: var(--accent); }
+.btn-accent {
+  background: var(--accent);
+  color: #0d0f14;
+  border-color: var(--accent);
+  font-weight: 700;
+}
+.btn-accent:hover { background: #d4e84f; color: #0d0f14; border-color: #d4e84f; }
+.btn-danger { border-color: var(--red); color: var(--red); }
+.btn-danger:hover { background: rgba(255,90,90,.1); }
+.btn-sm { padding: 4px 10px; font-size: 11px; }
+.btn-short-label { display: none; }
+.btn-full-label  { display: inline; }
+@media (max-width: 640px) {
+  .btn-short-label { display: inline; }
+  .btn-full-label  { display: none; }
+  .route-test-btn  { padding: 4px 8px; }
+}
+
+/* ── Forms ── */
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.form-row.single { grid-template-columns: 1fr; }
+.form-group { display: flex; flex-direction: column; gap: 5px; }
+label { font-size: 11px; color: var(--muted); }
+input, select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  padding: 8px 12px;
+  outline: none;
+  transition: border-color .15s;
+  width: 100%;
+}
+input:focus, select:focus { border-color: var(--accent2); }
+input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(.5); }
+
+/* ── Check results ── */
+.train-result {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  animation: fadeIn .3s ease;
+}
+@keyframes fadeIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:none} }
+.train-num {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--accent);
+  font-family: 'Unbounded', sans-serif;
+}
+.train-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 8px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.train-meta span { display: flex; align-items: center; gap: 5px; }
+.time-block {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0 12px;
+}
+.time { font-size: 22px; font-weight: 700; letter-spacing: -1px; }
+.time-arrow { color: var(--accent); font-size: 18px; }
+.time-small { font-size: 11px; color: var(--muted); }
+.cars-table { width: 100%; border-collapse: collapse; margin-top: 4px; }
+.cars-table th {
+  text-align: left;
+  font-size: 10px;
+  color: var(--muted);
+  padding: 4px 8px 4px 0;
+  border-bottom: 1px solid var(--border);
+  letter-spacing: .5px;
+}
+.cars-table td {
+  padding: 6px 8px 6px 0;
+  border-bottom: 1px solid rgba(255,255,255,.03);
+  font-size: 12px;
+}
+.cars-table tr:last-child td { border-bottom: none; }
+.seats-count { color: var(--accent2); font-weight: 700; }
+.price-col { color: var(--accent); }
+.no-seats { color: var(--muted); font-style: italic; }
+.from-schedule { color: var(--muted); font-size: 11px; }
+
+/* ── History ── */
+.history-row {
+  display: grid;
+  grid-template-columns: 110px 80px 1fr;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.history-row:last-child { border-bottom: none; }
+.history-ts { color: var(--muted); font-size: 11px; }
+.history-seats { color: var(--accent2); text-align: right; }
+.history-err { color: var(--red); font-size: 11px; }
+
+/* ── Settings ── */
+.settings-section { margin-bottom: 24px; }
+.settings-section h3 {
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-bottom: 14px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.save-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+}
+.save-msg { font-size: 12px; color: var(--success); opacity: 0; transition: opacity .3s; }
+.save-msg.show { opacity: 1; }
+
+/* ── Add route modal ── */
+.modal-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.7);
+  z-index: 100;
+  align-items: center;
+  justify-content: center;
+}
+.modal-backdrop.open { display: flex; }
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 24px;
+  width: 460px;
+  max-width: 95vw;
+  overflow: visible;
+}
+.modal h2 {
+  font-family: 'Unbounded', sans-serif;
+  font-size: 14px;
+  margin-bottom: 20px;
+  color: var(--accent);
+}
+.modal-footer { display: flex; gap: 10px; margin-top: 20px; justify-content: flex-end; }
+
+/* ── Autocomplete ── */
+.autocomplete-wrap { position: relative; }
+.autocomplete-list {
+  position: absolute;
+  top: 100%;
+  left: 0; right: 0;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 0 0 5px 5px;
+  z-index: 200;
+  max-height: 160px;
+  overflow-y: auto;
+  display: none;
+}
+.autocomplete-list.open { display: block; }
+.ac-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background .1s;
+}
+.ac-item:hover { background: var(--border); }
+.ac-code { color: var(--muted); font-size: 10px; margin-left: 6px; }
+
+/* ── Empty state ── */
+.empty {
+  text-align: center;
+  padding: 40px;
+  color: var(--muted);
+}
+.empty i { display: block; margin: 0 auto 10px; }
+
+/* ── Loading ── */
+/* spinner replaced by lucide loader */
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <header>
+    <div class="logo">РЖД<span>.</span>monitor</div>
+    <div class="status-pill" id="monitorToggle" onclick="toggleMonitor()">
+      <div class="dot"></div>
+      <span id="monitorLabel">мониторинг выкл</span>
+    </div>
+  </header>
+
+  <nav>
+    <div class="nav-item active" data-page="routes" onclick="showPage('routes', this)">
+      <i data-lucide="map" width="16" height="16"></i> Маршруты
+    </div>
+    <div class="nav-item" data-page="check" onclick="showPage('check', this)">
+      <i data-lucide="search" width="16" height="16"></i> Проверить
+    </div>
+    <div class="nav-item" data-page="history" onclick="showPage('history', this)">
+      <i data-lucide="clock" width="16" height="16"></i> История
+    </div>
+    <div class="nav-item" data-page="settings" onclick="showPage('settings', this)">
+      <i data-lucide="settings" width="16" height="16"></i> Настройки
+    </div>
+  </nav>
+
+  <main>
+
+    <!-- ROUTES PAGE -->
+    <div class="page active" id="page-routes">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+        <div style="font-family:'Unbounded',sans-serif;font-size:16px">Маршруты мониторинга</div>
+        <button class="btn btn-accent add-btn" onclick="openAddRoute()" style="display:flex;align-items:center;gap:4px"><i data-lucide="plus" width="16" height="16" class="add-btn-icon"></i><span class="add-btn-text">Добавить</span></button>
+      </div>
+      <div id="routesList"></div>
+    </div>
+
+    <!-- CHECK PAGE -->
+    <div class="page" id="page-check">
+      <div style="font-family:'Unbounded',sans-serif;font-size:16px;margin-bottom:20px">Проверить вручную</div>
+      <div class="card">
+        <div class="form-row">
+          <div class="form-group autocomplete-wrap">
+            <label>ОТКУДА</label>
+            <input id="checkFrom" placeholder="Санкт-Петербург" oninput="acSearch('checkFrom','checkFromCode','acFrom')" onblur="acBlur('checkFrom','checkFromCode','acFrom')">
+            <input type="hidden" id="checkFromCode" value="2004000">
+            <div class="autocomplete-list" id="acFrom"></div>
+          </div>
+          <div class="form-group autocomplete-wrap">
+            <label>КУДА</label>
+            <input id="checkTo" placeholder="Ижевск" oninput="acSearch('checkTo','checkToCode','acTo')" onblur="acBlur('checkTo','checkToCode','acTo')">
+            <input type="hidden" id="checkToCode" value="2060150">
+            <div class="autocomplete-list" id="acTo"></div>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>ДАТА</label>
+            <input type="date" id="checkDate">
+          </div>
+          <div class="form-group" style="justify-content:flex-end">
+            <label>&nbsp;</label>
+            <button class="btn btn-accent" onclick="doCheck()" id="checkBtn">Проверить</button>
+          </div>
+        </div>
+      </div>
+      <div id="checkResults"></div>
+    </div>
+
+    <!-- HISTORY PAGE -->
+    <div class="page" id="page-history">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+        <div style="font-family:'Unbounded',sans-serif;font-size:16px">История проверок</div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <label style="font-size:11px;color:var(--muted)">Период</label>
+          <select id="histDays" onchange="loadHistory()" style="width:80px;padding:5px 8px;font-size:12px">
+            <option value="1" selected>1 день</option>
+            <option value="2">2 дня</option>
+            <option value="3">3 дня</option>
+          </select>
+          <label style="font-size:11px;color:var(--muted)">Показать</label>
+          <select id="histLimit" onchange="loadHistory()" style="width:70px;padding:5px 8px;font-size:12px">
+            <option value="50">50</option>
+            <option value="100">100</option>
+            <option value="200">200</option>
+            <option value="0">Все</option>
+          </select>
+          <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);cursor:pointer">
+            <input type="checkbox" id="histOnlySeats" onchange="loadHistory()" style="width:auto">
+            только с местами
+          </label>
+          <button class="btn btn-danger btn-sm" onclick="clearHistory()">Очистить</button>
+        </div>
+      </div>
+      <div id="historyGroups"></div>
+    </div>
+
+    <!-- SETTINGS PAGE -->
+    <div class="page" id="page-settings">
+      <div style="font-family:'Unbounded',sans-serif;font-size:16px;margin-bottom:20px">Настройки</div>
+      <div class="card">
+        <div class="settings-section">
+          <h3>Email уведомления</h3>
+          <div class="form-row">
+            <div class="form-group">
+              <label>SMTP СЕРВЕР</label>
+              <input id="smtpHost" placeholder="smtp.gmail.com">
+            </div>
+            <div class="form-group">
+              <label>ПОРТ</label>
+              <input id="smtpPort" type="number" placeholder="587">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>ЛОГИН</label>
+              <input id="smtpUser" placeholder="your@gmail.com">
+            </div>
+            <div class="form-group">
+              <label>ПАРОЛЬ ПРИЛОЖЕНИЯ</label>
+              <input id="smtpPass" type="password" placeholder="xxxx xxxx xxxx xxxx">
+            </div>
+          </div>
+          <div class="save-bar" style="margin-top:4px">
+            <span style="font-size:11px;color:var(--muted)">Получатель задаётся в каждом маршруте отдельно</span>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h3>Мониторинг</h3>
+          <div class="form-row single">
+            <div class="form-group">
+              <label>ИНТЕРВАЛ ПРОВЕРКИ (минуты)</label>
+              <input id="intervalMin" type="number" min="1" max="60" placeholder="5" style="max-width:120px">
+            </div>
+          </div>
+        </div>
+
+        <div class="save-bar">
+          <button class="btn btn-accent" onclick="saveSettings()">Сохранить</button>
+          <span class="save-msg" id="saveMsg"><i data-lucide="check" width="14" height="14" style="vertical-align:middle;margin-right:4px"></i>Сохранено</span>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ADD ROUTE MODAL -->
+<div class="modal-backdrop" id="addRouteModal">
+  <div class="modal">
+    <h2>Новый маршрут</h2>
+    <div class="modal-scroll">
+    <div class="form-row">
+      <div class="form-group autocomplete-wrap">
+        <label>ОТКУДА</label>
+        <input id="newFrom" placeholder="Санкт-Петербург" oninput="acSearch('newFrom','newFromCode','acNewFrom')" onblur="acBlur('newFrom','newFromCode','acNewFrom')">
+        <input type="hidden" id="newFromCode" value="2004000">
+        <div class="autocomplete-list" id="acNewFrom"></div>
+      </div>
+      <div class="form-group autocomplete-wrap">
+        <label>КУДА</label>
+        <input id="newTo" placeholder="Ижевск" oninput="acSearch('newTo','newToCode','acNewTo')" onblur="acBlur('newTo','newToCode','acNewTo')">
+        <input type="hidden" id="newToCode" value="2060150">
+        <div class="autocomplete-list" id="acNewTo"></div>
+      </div>
+    </div>
+    <div class="form-group" style="margin-bottom:12px">
+      <label>ДОБАВИТЬ ДАТУ</label>
+      <div style="display:flex;gap:8px">
+        <input type="date" id="newDateInput" style="flex:1">
+        <button class="btn" onclick="addDateChip()">+ Добавить</button>
+      </div>
+    </div>
+    <div class="dates-row" id="newDatesChips"></div>
+    <div class="form-group" style="margin-top:12px">
+      <label>EMAIL ПОЛУЧАТЕЛЯ</label>
+      <input id="newEmailTo" type="email" placeholder="notify@example.com">
+    </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeAddRoute()">Отмена</button>
+      <button class="btn btn-accent" onclick="saveNewRoute()">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- BOTTOM NAV (mobile) -->
+<div class="bottom-nav">
+  <div class="bottom-nav-inner">
+    <div class="bnav-item active" data-page="routes" onclick="showPage('routes', this)">
+      <i data-lucide="map" width="22" height="22"></i>
+      <span>Маршруты</span>
+    </div>
+    <div class="bnav-item" data-page="check" onclick="showPage('check', this)">
+      <i data-lucide="search" width="22" height="22"></i>
+      <span>Проверить</span>
+    </div>
+    <div class="bnav-item" data-page="history" onclick="showPage('history', this)">
+      <i data-lucide="clock" width="22" height="22"></i>
+      <span>История</span>
+    </div>
+    <div class="bnav-item" data-page="settings" onclick="showPage('settings', this)">
+      <i data-lucide="settings" width="22" height="22"></i>
+      <span>Настройки</span>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────
+let config = {};
+let newDates = [];
+
+// ── Init ─────────────────────────────────────────────────────────
+async function init() {
+  await loadConfig();
+  renderRoutes();
+  lucide.createIcons();
+  // Ставим сегодня в поле даты
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('checkDate').value = today;
+  document.getElementById('newDateInput').value = today;
+}
+
+async function loadConfig() {
+  const r = await fetch('/api/config');
+  config = await r.json();
+  updateMonitorStatus(config.monitoring_active);
+  fillSettings();
+}
+
+// ── Navigation ────────────────────────────────────────────────────
+function showPage(name, el) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.querySelectorAll('.bnav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  // активируем и sidebar и bottom-nav
+  document.querySelectorAll('[data-page="' + name + '"]').forEach(n => n.classList.add('active'));
+  if (name === 'history') loadHistory();
+  if (name === 'routes') renderRoutes();
+  window.scrollTo(0, 0);
+}
+
+// ── Monitor toggle ────────────────────────────────────────────────
+function updateMonitorStatus(active) {
+  const pill  = document.getElementById('monitorToggle');
+  const label = document.getElementById('monitorLabel');
+  if (active) {
+    pill.classList.add('active');
+    label.textContent = 'мониторинг вкл';
+  } else {
+    pill.classList.remove('active');
+    label.textContent = 'мониторинг выкл';
+  }
+}
+
+async function toggleMonitor() {
+  const active = !config.monitoring_active;
+  await fetch('/api/monitoring', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({active})
+  });
+  config.monitoring_active = active;
+  updateMonitorStatus(active);
+}
+
+// ── Routes ────────────────────────────────────────────────────────
+async function renderRoutes() {
+  const r = await fetch('/api/routes');
+  const routes = await r.json();
+  const el = document.getElementById('routesList');
+  if (!routes.length) {
+    el.innerHTML = '<div class="empty"><i data-lucide="map" width="32" height="32" style="margin-bottom:10px;color:var(--muted)"></i><div>Маршруты не добавлены</div></div>';
+    return;
+  }
+  el.innerHTML = routes.map(route => `
+    <div class="route-card">
+      <div class="route-header">
+        <span class="route-name">${escHtml(route.from_name)}</span>
+        <span class="route-arrow">→</span>
+        <span class="route-name">${escHtml(route.to_name)}</span>
+        <span class="badge ${route.active ? 'badge-on' : 'badge-off'}">
+          ${route.active ? 'активен' : 'пауза'}
+        </span>
+      </div>
+      <div style="display:flex;gap:12px;align-items:flex-start;margin-top:8px">
+        <div class="dates-row" style="flex:1;margin-top:0">
+          ${(route.dates || []).map(d => `
+            <div class="date-chip">
+              ${formatDateRu(d)}
+              <span class="rm" onclick="removeDateFromRoute('${route.id}', '${d}')">×</span>
+            </div>
+          `).join('')}
+          <button class="btn btn-sm" onclick="addDateToRoute('${route.id}')">
+            <span class="btn-full-label">+ дата</span><span class="btn-short-label">+</span>
+          </button>
+        </div>
+        <div style="display:flex;flex-direction:row;gap:6px;flex-shrink:0">
+          <button class="icon-btn" onclick="toggleRoute('${route.id}', ${!route.active})" title="${route.active ? 'Пауза' : 'Включить'}">
+            ${route.active ? '<i data-lucide="pause" width="18" height="18"></i>' : '<i data-lucide="play" width="18" height="18"></i>'}
+          </button>
+          <button class="icon-btn icon-btn-danger" onclick="deleteRoute('${route.id}')" title="Удалить">
+            <i data-lucide="trash-2" width="18" height="18"></i>
+          </button>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;margin-top:10px">
+        <i data-lucide="mail" width="18" height="18" style="color:var(--muted);flex-shrink:0"></i>
+        <input
+          class="route-email-input"
+          style="flex:1;font-size:12px;padding:5px 10px;min-width:0"
+          placeholder="email1@mail.ru, email2@mail.ru"
+          value="${escHtml(route.email_to || '')}"
+          onchange="updateRouteEmail('${route.id}', this.value)"
+        >
+        <button class="btn btn-sm route-test-btn" onclick="testRouteEmail('${route.id}', this.previousElementSibling.value)">Тест</button>
+      </div>
+    </div>
+  `).join('');
+  lucide.createIcons();
+}
+
+async function toggleRoute(id, active) {
+  const r = await fetch('/api/routes');
+  const routes = await r.json();
+  const route = routes.find(r => r.id === id);
+  await fetch('/api/routes/' + id, {
+    method: 'PUT',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({...route, active})
+  });
+  renderRoutes();
+}
+
+async function deleteRoute(id) {
+  if (!confirm('Удалить маршрут?')) return;
+  await fetch('/api/routes/' + id, {method: 'DELETE'});
+  renderRoutes();
+}
+
+async function removeDateFromRoute(id, date) {
+  const r = await fetch('/api/routes');
+  const routes = await r.json();
+  const route = routes.find(r => r.id === id);
+  route.dates = route.dates.filter(d => d !== date);
+  await fetch('/api/routes/' + id, {
+    method: 'PUT',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(route)
+  });
+  renderRoutes();
+}
+
+async function addDateToRoute(id) {
+  const d = prompt('Введите дату (ГГГГ-ММ-ДД):');
+  if (!d || !/^\d{4}-\d{2}-\d{2}$/.test(d)) return;
+  const r = await fetch('/api/routes');
+  const routes = await r.json();
+  const route = routes.find(r => r.id === id);
+  if (!route.dates.includes(d)) route.dates.push(d);
+  await fetch('/api/routes/' + id, {
+    method: 'PUT',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(route)
+  });
+  renderRoutes();
+}
+
+// ── Add Route Modal ───────────────────────────────────────────────
+function openAddRoute() {
+  newDates = [];
+  document.getElementById('newFrom').value = '';
+  document.getElementById('newTo').value = '';
+  document.getElementById('newFromCode').value = '';
+  document.getElementById('newToCode').value = '';
+  document.getElementById('newDatesChips').innerHTML = '';
+  document.getElementById('newEmailTo').value = '';
+  document.getElementById('addRouteModal').classList.add('open');
+}
+function closeAddRoute() {
+  document.getElementById('addRouteModal').classList.remove('open');
+}
+function addDateChip() {
+  const d = document.getElementById('newDateInput').value;
+  if (!d || newDates.includes(d)) return;
+  newDates.push(d);
+  renderNewDatesChips();
+}
+function removeNewDate(d) {
+  newDates = newDates.filter(x => x !== d);
+  renderNewDatesChips();
+}
+function renderNewDatesChips() {
+  document.getElementById('newDatesChips').innerHTML = newDates.map(d => `
+    <div class="date-chip">${formatDateRu(d)}<span class="rm" onclick="removeNewDate('${d}')">×</span></div>
+  `).join('');
+}
+async function saveNewRoute() {
+  const fromName = document.getElementById('newFrom').value;
+  const toName   = document.getElementById('newTo').value;
+  const fromCode = document.getElementById('newFromCode').value;
+  const toCode   = document.getElementById('newToCode').value;
+  if (!fromName || !toName) { alert('Введите названия станций'); return; }
+  if (!fromCode) { alert('Станция отправления не найдена — выберите из списка'); return; }
+  if (!toCode)   { alert('Станция назначения не найдена — выберите из списка'); return; }
+  if (!newDates.length) { alert('Добавьте хотя бы одну дату'); return; }
+  await fetch('/api/routes', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({
+      from_code: fromCode, from_name: fromName,
+      to_code:   toCode,   to_name:   toName,
+      dates: newDates, active: true,
+      email_to: document.getElementById('newEmailTo').value.trim(),
+    })
+  });
+  closeAddRoute();
+  renderRoutes();
+}
+
+// ── Manual Check ─────────────────────────────────────────────────
+async function doCheck() {
+  const fromCode = document.getElementById('checkFromCode').value;
+  const toCode   = document.getElementById('checkToCode').value;
+  const date     = document.getElementById('checkDate').value;
+  if (!fromCode || !toCode || !date) { alert('Заполните все поля'); return; }
+
+  const btn = document.getElementById('checkBtn');
+  btn.innerHTML = '<i data-lucide="loader" width="14" height="14" style="animation:spin .6s linear infinite;vertical-align:middle"></i> Запрос...'; lucide.createIcons();
+  btn.disabled = true;
+
+  const r = await fetch('/api/check_now', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({from_code: fromCode, to_code: toCode, date})
+  });
+  const data = await r.json();
+  btn.innerHTML = 'Проверить';
+  btn.disabled = false;
+
+  renderCheckResults(data, date);
+}
+
+function renderCheckResults(data, date) {
+  const el = document.getElementById('checkResults');
+  if (data.error) {
+    el.innerHTML = `<div class="card" style="color:var(--red);display:flex;align-items:center;gap:8px"><i data-lucide="alert-triangle" width="16" height="16"></i>${data.error}</div>`;
+    return;
+  }
+  if (!data.trains || !data.trains.length) {
+    el.innerHTML = `<div class="card empty"><i data-lucide="search-x" width="32" height="32" style="margin-bottom:10px;color:var(--muted)"></i><div>Поездов не найдено на ${formatDateRu(date)}</div></div>`;
+    return;
+  }
+  el.innerHTML = data.trains.map(t => renderTrain(t)).join('');
+}
+
+function renderTrain(t) {
+  const dep = t.depart ? t.depart.substring(11,16) : '?';
+  const arr = t.arrive ? t.arrive.substring(11,16) : '?';
+  const depDate = t.depart ? formatDateRu(t.depart.substring(0,10)) : '';
+  const arrDate = t.arrive ? formatDateRu(t.arrive.substring(0,10)) : '';
+  const h = t.duration ? Math.floor(t.duration/60) : 0;
+  const m = t.duration ? Math.floor(t.duration%60) : 0;
+
+  const carOrder = ['ReservedSeat','Compartment','Sedentary','Lux','Soft','Common'];
+  const carKeys  = [...carOrder.filter(k => k in t.cars),
+                    ...Object.keys(t.cars).filter(k => !carOrder.includes(k))];
+
+  const carsRows = carKeys.map(key => {
+    const g = t.cars[key];
+    const seats = g.total || (g.lower + g.upper + g.lower_side + g.upper_side);
+    if (!seats) return '';
+    const details = [
+      g.lower      ? `↓${g.lower}` : '',
+      g.upper      ? `↑${g.upper}` : '',
+      (g.lower_side+g.upper_side) ? `боков.${g.lower_side+g.upper_side}` : '',
+    ].filter(Boolean).join('  ');
+    const price = g.min_price
+      ? `${Math.round(g.min_price).toLocaleString('ru')} ₽` + (g.max_price && g.max_price !== g.min_price ? ` – ${Math.round(g.max_price).toLocaleString('ru')} ₽` : '')
+      : '—';
+    return `<tr>
+      <td>${g.name}</td>
+      <td class="seats-count">${seats}</td>
+      <td class="hide-mobile" style="color:var(--muted);font-size:11px">${details}</td>
+      <td class="price-col">${price}</td>
+    </tr>`;
+  }).join('');
+
+  const erBadge = t.er ? '<span style="color:var(--success);font-size:11px">✓ эл.рег.</span>' : '';
+  const fromSched = t.from_schedule ? '<span class="from-schedule">из расписания</span>' : '';
+
+  return `<div class="train-result">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <span class="train-num">№ ${t.number}</span>
+      ${erBadge} ${fromSched}
+      ${t.total_seats > 0 ? `<span style="color:var(--accent2);font-size:12px">${t.total_seats} мест</span>` : '<span style="color:var(--red);font-size:12px">нет мест</span>'}
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin:4px 0">${t.origin} → ${t.dest}</div>
+    <div class="time-block">
+      <div>
+        <div class="time">${dep}</div>
+        <div class="time-small">${depDate} мск</div>
+      </div>
+      <div class="time-arrow">→</div>
+      <div>
+        <div class="time">${arr}</div>
+        <div class="time-small">${arrDate} мск+1</div>
+      </div>
+      <div style="margin-left:16px;color:var(--muted);font-size:12px">${h}ч ${m.toString().padStart(2,'0')}м · ${t.distance ?? '?'} км</div>
+    </div>
+    ${carsRows ? `<table class="cars-table">
+      <thead><tr><th>ТИП</th><th>МЕСТ</th><th>МЕСТА</th><th>ЦЕНА</th></tr></thead>
+      <tbody>${carsRows}</tbody>
+    </table>` : '<div class="no-seats">Информация о вагонах недоступна</div>'}
+  </div>`;
+}
+
+// ── History ───────────────────────────────────────────────────────
+async function loadHistory() {
+  const days = document.getElementById('histDays')?.value || '3';
+  const r = await fetch('/api/history?days=' + days);
+  let hist = await r.json();
+  const el = document.getElementById('historyGroups');
+
+  const onlySeats = document.getElementById('histOnlySeats')?.checked;
+  const limit     = parseInt(document.getElementById('histLimit')?.value || '50');
+
+  if (onlySeats) hist = hist.filter(h => h.seats > 0);
+
+  if (!hist.length) {
+    el.innerHTML = '<div class="card"><div class="empty"><i data-lucide="clock" width="32" height="32" style="margin-bottom:10px;color:var(--muted)"></i><div>История пуста</div></div></div>';
+    lucide.createIcons();
+    return;
+  }
+
+  // Группировка по маршруту + дате отправления
+  const groups = {};
+  for (const h of hist) {
+    const key = `${h.from_name}→${h.to_name} | ${formatDateRu(h.date)}`;
+    if (!groups[key]) groups[key] = {label: key, items: []};
+    groups[key].items.push(h);
+  }
+
+  const sortedGroups = Object.values(groups).sort((a, b) => {
+    // Извлекаем дату из ключа группы (формат "Маршрут | ДД.ММ.ГГГГ")
+    const dateA = a.label.split(' | ')[1] || '';
+    const dateB = b.label.split(' | ')[1] || '';
+    // Конвертируем ДД.ММ.ГГГГ → ГГГГ-ММ-ДД для сравнения
+    const toIso = d => d.split('.').reverse().join('-');
+    return toIso(dateA).localeCompare(toIso(dateB));
+  });
+
+  el.innerHTML = sortedGroups.map(g => `
+    <div class="card" style="margin-bottom:12px;padding:14px 16px">
+      <div style="font-size:12px;font-weight:500;color:var(--accent);margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">
+        <span>${g.label}</span>
+        <span style="color:var(--muted);font-size:11px">${g.items.length} проверок</span>
+      </div>
+      ${(limit > 0 ? g.items.slice(-limit) : g.items).map(h => {
+        const ts = new Date(h.ts.endsWith('Z') ? h.ts : h.ts + 'Z').toLocaleString('ru', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Moscow'});
+        return `<div class="history-row">
+          <span class="history-ts">${ts}</span>
+          <span class="history-seats">${h.seats > 0 ? '<span style="color:var(--accent2)">'+h.seats+' мест</span>' : '<span style="color:var(--muted)">—</span>'}</span>
+          <span class="history-err">${h.error ? '<span style="color:var(--red)">'+h.error+'</span>' : ''}</span>
+        </div>`;
+      }).join('')}
+    </div>
+  `).join('');
+
+  lucide.createIcons();
+}
+
+async function clearHistory() {
+  if (!confirm('Очистить историю?')) return;
+  await fetch('/api/history', {method: 'DELETE'});
+  loadHistory();
+}
+
+// ── Settings ──────────────────────────────────────────────────────
+function fillSettings() {
+  if (!config) return;
+  document.getElementById('smtpHost').value    = config.smtp_host    || '';
+  document.getElementById('smtpPort').value    = config.smtp_port    || 587;
+  document.getElementById('smtpUser').value    = config.smtp_user    || '';
+  document.getElementById('smtpPass').value    = config.smtp_password|| '';
+  document.getElementById('intervalMin').value = config.interval_min || 5;
+}
+
+async function saveSettings() {
+  await fetch('/api/config', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({
+      smtp_host:     document.getElementById('smtpHost').value,
+      smtp_port:     parseInt(document.getElementById('smtpPort').value),
+      smtp_user:     document.getElementById('smtpUser').value,
+      smtp_password: document.getElementById('smtpPass').value,
+      interval_min:  parseInt(document.getElementById('intervalMin').value),
+    })
+  });
+  const msg = document.getElementById('saveMsg');
+  msg.classList.add('show');
+  setTimeout(() => msg.classList.remove('show'), 2500);
+}
+
+async function updateRouteEmail(id, email_to) {
+  const r = await fetch('/api/routes');
+  const routes = await r.json();
+  const route = routes.find(r => r.id === id);
+  if (!route) return;
+  await fetch('/api/routes/' + id, {
+    method: 'PUT',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({...route, email_to})
+  });
+}
+
+async function testRouteEmail(id, email_to) {
+  const to = email_to || prompt('Email для теста:');
+  if (!to) return;
+  await saveSettings();
+  const r = await fetch('/api/test_email', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({email_to: to})
+  });
+  const d = await r.json();
+  alert(d.ok ? '✓ Письмо отправлено на ' + to : '✗ Ошибка. Проверьте настройки SMTP и лог.');
+}
+
+// ── Autocomplete ──────────────────────────────────────────────────
+let acTimers = {};
+// Последние результаты поиска: {listId: [{name, code}, ...]}
+const acResults = {};
+
+async function acSearch(inputId, codeId, listId) {
+  // Сбрасываем код при изменении текста
+  document.getElementById(codeId).value = '';
+  clearTimeout(acTimers[inputId]);
+  acTimers[inputId] = setTimeout(async () => {
+    const q = document.getElementById(inputId).value.trim();
+    if (q.length < 2) { document.getElementById(listId).classList.remove('open'); return; }
+    const r = await fetch('/api/station_search?q=' + encodeURIComponent(q));
+    const items = await r.json();
+    acResults[listId] = items;
+    const list = document.getElementById(listId);
+    if (!items.length) { list.classList.remove('open'); return; }
+    list.innerHTML = items.map((it, i) =>
+      `<div class="ac-item" onclick="acSelectIdx('${inputId}','${codeId}','${listId}',${i})">
+        ${escHtml(it.name)}<span class="ac-code">${escHtml(it.code)}</span>
+      </div>`
+    ).join('');
+    list.classList.add('open');
+  }, 300);
+}
+
+function acSelect(inputId, codeId, listId, name, code) {
+  document.getElementById(inputId).value = name;
+  document.getElementById(codeId).value  = code;
+  document.getElementById(listId).classList.remove('open');
+}
+
+function acSelectIdx(inputId, codeId, listId, i) {
+  const it = (acResults[listId] || [])[i];
+  if (it) acSelect(inputId, codeId, listId, it.name, it.code);
+}
+
+// При потере фокуса — если код не выбран, берём первый результат
+function acBlur(inputId, codeId, listId) {
+  setTimeout(() => {
+    const codeEl = document.getElementById(codeId);
+    if (codeEl.value) return; // уже выбрано
+    const items = acResults[listId] || [];
+    if (items.length > 0) {
+      acSelect(inputId, codeId, listId, items[0].name, items[0].code);
+    }
+  }, 200);
+}
+
+document.addEventListener('click', e => {
+  document.querySelectorAll('.autocomplete-list').forEach(l => {
+    if (!l.contains(e.target)) l.classList.remove('open');
+  });
+});
+
+// ── Helpers ───────────────────────────────────────────────────────
+function escHtml(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function formatDateRu(d) {
+  if (!d) return '?';
+  const parts = d.substring(0,10).split('-');
+  if (parts.length < 3) return d;
+  return `${parts[2]}.${parts[1]}.${parts[0]}`;
+}
+
+init();
+</script>
+</body>
+</html>
