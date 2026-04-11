@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect width="32" height="32" rx="6" fill="#0d0f14"/>
+  <!-- корпус вагона -->
+  <rect x="4" y="10" width="24" height="13" rx="3" fill="#e8ff5a"/>
+  <!-- окна -->
+  <rect x="7" y="13" width="4" height="4" rx="1" fill="#0d0f14"/>
+  <rect x="14" y="13" width="4" height="4" rx="1" fill="#0d0f14"/>
+  <rect x="21" y="13" width="4" height="4" rx="1" fill="#0d0f14"/>
+  <!-- рельс -->
+  <line x1="2" y1="27" x2="30" y2="27" stroke="#252a38" stroke-width="1.5" stroke-linecap="round"/>
+  <!-- колёса -->
+  <circle cx="10" cy="24" r="3" fill="#151820" stroke="#e8ff5a" stroke-width="1.5"/>
+  <circle cx="22" cy="24" r="3" fill="#151820" stroke="#e8ff5a" stroke-width="1.5"/>
+</svg>
