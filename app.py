@@ -16,10 +16,11 @@ import requests as req
 
 app = Flask(__name__, static_folder="static")
 
-CONFIG_FILE  = os.path.expanduser("~/rzd_config.json")
-STATE_FILE   = os.path.expanduser("~/rzd_state.json")
-LOG_FILE     = os.path.expanduser("~/rzd_monitor.log")
-HISTORY_FILE = os.path.expanduser("~/rzd_history.json")
+_data_dir    = os.environ.get("RZD_DATA_DIR", os.path.expanduser("~"))
+CONFIG_FILE  = os.path.join(_data_dir, "rzd_config.json")
+STATE_FILE   = os.path.join(_data_dir, "rzd_state.json")
+LOG_FILE     = os.path.join(_data_dir, "rzd_monitor.log")
+HISTORY_FILE = os.path.join(_data_dir, "rzd_history.json")
 
 logging.basicConfig(
     filename=LOG_FILE, level=logging.INFO,
