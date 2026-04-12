@@ -8,7 +8,8 @@ rzd-venv/
 venv/
 .venv/
 
-# User data (хранятся в ~/)
+# User data (хранятся в ~/ или ./data/)
+data/
 *.json
 
 # Logs
