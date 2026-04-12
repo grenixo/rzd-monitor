@@ -670,6 +670,39 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(.5); }
       <div style="font-family:'Unbounded',sans-serif;font-size:16px;margin-bottom:20px">Настройки</div>
       <div class="card">
         <div class="settings-section">
+          <h3>ntfy уведомления</h3>
+          <div class="form-row">
+            <div class="form-group">
+              <label>СЕРВЕР</label>
+              <input id="ntfyUrl" placeholder="http://example.com:2586">
+            </div>
+            <div class="form-group">
+              <label>ТОПИК</label>
+              <input id="ntfyTopic" placeholder="rzd">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>ЛОГИН</label>
+              <input id="ntfyUser" placeholder="(если включена авторизация)">
+            </div>
+            <div class="form-group">
+              <label>ПАРОЛЬ</label>
+              <input id="ntfyPassword" type="password" placeholder="(если включена авторизация)">
+            </div>
+          </div>
+          <div class="form-row single">
+            <div class="form-group">
+              <label>ТОКЕН (альтернатива логину/паролю)</label>
+              <input id="ntfyToken" type="password" placeholder="tk_...">
+            </div>
+          </div>
+          <div class="save-bar" style="margin-top:4px">
+            <button class="btn btn-sm" onclick="testNtfy()" style="font-size:12px">Отправить тест</button>
+          </div>
+        </div>
+
+        <div class="settings-section">
           <h3>Email уведомления</h3>
           <div class="form-row">
             <div class="form-group">
@@ -770,6 +803,10 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(.5); }
       </div>
     </div>
     <div class="dates-row" id="newDatesChips"></div>
+    <div class="form-group" style="margin-top:12px">
+      <label>NTFY ТОПИК</label>
+      <input id="newNtfyTopic" placeholder="rzd (если пусто — глобальный)">
+    </div>
     <div class="form-group" style="margin-top:12px">
       <label>EMAIL ПОЛУЧАТЕЛЯ</label>
       <input id="newEmailTo" type="email" placeholder="notify@example.com">
@@ -1006,6 +1043,16 @@ async function renderRoutes() {
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:6px;margin-top:10px">
+        <i data-lucide="bell" width="18" height="18" style="color:var(--muted);flex-shrink:0"></i>
+        <input
+          class="route-email-input"
+          style="flex:1;font-size:12px;padding:5px 10px;min-width:0"
+          placeholder="ntfy топик (если пусто — глобальный)"
+          value="${escHtml(route.ntfy_topic || '')}"
+          onchange="updateRouteNtfyTopic('${route.id}', this.value)"
+        >
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;margin-top:6px">
         <i data-lucide="mail" width="18" height="18" style="color:var(--muted);flex-shrink:0"></i>
         <input
           class="route-email-input"
@@ -1076,6 +1123,7 @@ function openAddRoute() {
   document.getElementById('newToCode').value = '';
   document.getElementById('newDatesChips').innerHTML = '';
   document.getElementById('newEmailTo').value = '';
+  document.getElementById('newNtfyTopic').value = '';
   document.getElementById('addRouteModal').classList.add('open');
 }
 function closeAddRoute() {
@@ -1112,7 +1160,8 @@ async function saveNewRoute() {
       from_code: fromCode, from_name: fromName,
       to_code:   toCode,   to_name:   toName,
       dates: newDates, active: true,
-      email_to: document.getElementById('newEmailTo').value.trim(),
+      email_to:   document.getElementById('newEmailTo').value.trim(),
+      ntfy_topic: document.getElementById('newNtfyTopic').value.trim(),
     })
   });
   closeAddRoute();
@@ -1284,6 +1333,11 @@ function fillSettings() {
   document.getElementById('smtpPort').value    = config.smtp_port    || 587;
   document.getElementById('smtpUser').value    = config.smtp_user    || '';
   document.getElementById('smtpPass').value    = config.smtp_password|| '';
+  document.getElementById('ntfyUrl').value      = config.ntfy_url      || '';
+  document.getElementById('ntfyTopic').value    = config.ntfy_topic    || '';
+  document.getElementById('ntfyUser').value     = config.ntfy_user     || '';
+  document.getElementById('ntfyPassword').value = config.ntfy_password || '';
+  document.getElementById('ntfyToken').value    = config.ntfy_token    || '';
   document.getElementById('intervalMin').value = config.interval_min || 5;
 }
 
@@ -1296,12 +1350,29 @@ async function saveSettings() {
       smtp_port:     parseInt(document.getElementById('smtpPort').value),
       smtp_user:     document.getElementById('smtpUser').value,
       smtp_password: document.getElementById('smtpPass').value,
+      ntfy_url:      document.getElementById('ntfyUrl').value,
+      ntfy_topic:    document.getElementById('ntfyTopic').value,
+      ntfy_user:     document.getElementById('ntfyUser').value,
+      ntfy_password: document.getElementById('ntfyPassword').value,
+      ntfy_token:    document.getElementById('ntfyToken').value,
       interval_min:  parseInt(document.getElementById('intervalMin').value),
     })
   });
   const msg = document.getElementById('saveMsg');
   msg.classList.add('show');
   setTimeout(() => msg.classList.remove('show'), 2500);
+}
+
+async function updateRouteNtfyTopic(id, ntfy_topic) {
+  const r = await fetch('/api/routes');
+  const routes = await r.json();
+  const route = routes.find(r => r.id === id);
+  if (!route) return;
+  await fetch('/api/routes/' + id, {
+    method: 'PUT',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({...route, ntfy_topic})
+  });
 }
 
 async function updateRouteEmail(id, email_to) {
@@ -1314,6 +1385,13 @@ async function updateRouteEmail(id, email_to) {
     headers: {'Content-Type':'application/json'},
     body: JSON.stringify({...route, email_to})
   });
+}
+
+async function testNtfy() {
+  await saveSettings();
+  const r = await fetch('/api/test_ntfy', {method: 'POST'});
+  const d = await r.json();
+  alert(d.ok ? '✓ Уведомление отправлено' : '✗ Ошибка. Проверьте настройки ntfy и лог.');
 }
 
 async function testRouteEmail(id, email_to) {

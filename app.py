@@ -36,6 +36,11 @@ DEFAULT_CONFIG = {
     "smtp_port":         587,
     "smtp_user":         "",
     "smtp_password":     "",
+    "ntfy_url":          "",
+    "ntfy_topic":        "",
+    "ntfy_token":        "",
+    "ntfy_user":         "",
+    "ntfy_password":     "",
     "monitoring":        False,
     "interval_min":      5,
     "secret_key":        "",
@@ -262,6 +267,32 @@ def send_email(cfg, subject, body, email_to=None):
         log.error(f"Ошибка email: {e}")
         return False
 
+# ── ntfy ──────────────────────────────────────────────────────────
+
+def send_ntfy(cfg, title, body, ntfy_topic=None):
+    url   = cfg.get("ntfy_url", "").rstrip("/")
+    topic = (ntfy_topic or cfg.get("ntfy_topic", "")).strip()
+    if not url or not topic:
+        log.warning("ntfy не настроен (нет url или topic)")
+        return False
+    headers = {"Content-Type": "text/plain; charset=utf-8"}
+    token    = cfg.get("ntfy_token", "").strip()
+    ntfy_user = cfg.get("ntfy_user", "").strip()
+    ntfy_pass = cfg.get("ntfy_password", "").strip()
+    auth = None
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    elif ntfy_user and ntfy_pass:
+        auth = (ntfy_user, ntfy_pass)
+    try:
+        r = req.post(f"{url}/{topic}", data=body.encode("utf-8"), headers=headers, auth=auth, timeout=10)
+        r.raise_for_status()
+        log.info(f"ntfy отправлен → {topic}: {title}")
+        return True
+    except Exception as e:
+        log.error(f"Ошибка ntfy: {e}")
+        return False
+
 # ── Мониторинг ────────────────────────────────────────────────────
 
 monitor_thread = None
@@ -318,9 +349,6 @@ def monitor_loop():
             route    = entry["route"]
             by_date  = entry["by_date"]
             email_to = route.get("email_to", "").strip()
-            if not email_to:
-                log.warning(f"Маршрут {route['from_name']}→{route['to_name']}: email не указан, уведомление не отправлено")
-                continue
 
             lines = [f"Найдены свободные места!\n{route['from_name']} → {route['to_name']}\n"]
             for date_str, trains in sorted(by_date.items()):
@@ -335,7 +363,9 @@ def monitor_loop():
                             lines.append(f"    • {g['name']}: {seats} мест {price}")
             lines.append("\nhttps://ticket.rzd.ru/")
             subject = f"РЖД: билеты {route['from_name']} → {route['to_name']}"
-            send_email(cfg, subject, "\n".join(lines), email_to=email_to)
+            if email_to:
+                send_email(cfg, subject, "\n".join(lines), email_to=email_to)
+            send_ntfy(cfg, subject, "\n".join(lines), ntfy_topic=route.get("ntfy_topic", "").strip())
 
         save_state(state)
 
@@ -365,8 +395,11 @@ def index():
 @login_required
 def get_config():
     cfg = load_config()
-    safe = {k: v for k, v in cfg.items() if k != "smtp_password"}
+    _exclude = {"smtp_password", "ntfy_token", "ntfy_password", "secret_key", "ui_password_hash", "ui_password_salt"}
+    safe = {k: v for k, v in cfg.items() if k not in _exclude}
     safe["smtp_password"] = "••••••••" if cfg.get("smtp_password") else ""
+    safe["ntfy_token"]    = "••••••••" if cfg.get("ntfy_token") else ""
+    safe["ntfy_password"] = "••••••••" if cfg.get("ntfy_password") else ""
     safe["monitoring_active"] = monitor_thread is not None and monitor_thread.is_alive()
     return jsonify(safe)
 
@@ -375,11 +408,15 @@ def get_config():
 def update_config():
     cfg  = load_config()
     data = request.json
-    for k in ["smtp_host","smtp_port","smtp_user","interval_min"]:
+    for k in ["smtp_host","smtp_port","smtp_user","interval_min","ntfy_url","ntfy_topic","ntfy_user"]:
         if k in data:
             cfg[k] = data[k]
     if data.get("smtp_password") and not data["smtp_password"].startswith("•"):
         cfg["smtp_password"] = data["smtp_password"]
+    if data.get("ntfy_token") and not data["ntfy_token"].startswith("•"):
+        cfg["ntfy_token"] = data["ntfy_token"]
+    if data.get("ntfy_password") and not data["ntfy_password"].startswith("•"):
+        cfg["ntfy_password"] = data["ntfy_password"]
     save_config(cfg)
     return jsonify({"ok": True})
 
@@ -475,6 +512,13 @@ def test_email():
     if not email_to:
         return jsonify({"ok": False, "error": "Не указан получатель"})
     ok = send_email(cfg, "Тест — РЖД Монитор", "Если вы получили это письмо, email настроен правильно.", email_to=email_to)
+    return jsonify({"ok": ok})
+
+@app.route("/api/test_ntfy", methods=["POST"])
+@login_required
+def test_ntfy():
+    cfg = load_config()
+    ok  = send_ntfy(cfg, "Тест — РЖД Монитор", "Если вы получили это уведомление, ntfy настроен правильно.")
     return jsonify({"ok": ok})
 
 @app.route("/api/station_search", methods=["GET"])
