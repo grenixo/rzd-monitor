@@ -614,12 +614,14 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(.5); }
             <label>ОТКУДА</label>
             <input id="checkFrom" placeholder="Санкт-Петербург" oninput="acSearch('checkFrom','checkFromCode','acFrom')" onblur="acBlur('checkFrom','checkFromCode','acFrom')">
             <input type="hidden" id="checkFromCode" value="2004000">
+            <input type="hidden" id="checkFromNodeId" value="">
             <div class="autocomplete-list" id="acFrom"></div>
           </div>
           <div class="form-group autocomplete-wrap">
             <label>КУДА</label>
             <input id="checkTo" placeholder="Ижевск" oninput="acSearch('checkTo','checkToCode','acTo')" onblur="acBlur('checkTo','checkToCode','acTo')">
             <input type="hidden" id="checkToCode" value="2060150">
+            <input type="hidden" id="checkToNodeId" value="">
             <div class="autocomplete-list" id="acTo"></div>
           </div>
         </div>
@@ -786,12 +788,14 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(.5); }
         <label>ОТКУДА</label>
         <input id="newFrom" placeholder="Санкт-Петербург" oninput="acSearch('newFrom','newFromCode','acNewFrom')" onblur="acBlur('newFrom','newFromCode','acNewFrom')">
         <input type="hidden" id="newFromCode" value="2004000">
+        <input type="hidden" id="newFromNodeId" value="">
         <div class="autocomplete-list" id="acNewFrom"></div>
       </div>
       <div class="form-group autocomplete-wrap">
         <label>КУДА</label>
         <input id="newTo" placeholder="Ижевск" oninput="acSearch('newTo','newToCode','acNewTo')" onblur="acBlur('newTo','newToCode','acNewTo')">
         <input type="hidden" id="newToCode" value="2060150">
+        <input type="hidden" id="newToNodeId" value="">
         <div class="autocomplete-list" id="acNewTo"></div>
       </div>
     </div>
@@ -884,6 +888,7 @@ async function doLogin() {
   if (r.ok) {
     document.getElementById('loginPw').value = '';
     hideLoginScreen();
+    document.getElementById('logoutBtn').style.display = '';
     await initApp();
   } else {
     document.getElementById('loginError').textContent = 'Неверный пароль';
@@ -1023,7 +1028,7 @@ async function renderRoutes() {
       </div>
       <div style="display:flex;gap:12px;align-items:flex-start;margin-top:8px">
         <div class="dates-row" style="flex:1;margin-top:0">
-          ${(route.dates || []).map(d => `
+          ${(route.dates || []).slice().sort().map(d => `
             <div class="date-chip">
               ${formatDateRu(d)}
               <span class="rm" onclick="removeDateFromRoute('${route.id}', '${d}')">×</span>
@@ -1121,6 +1126,8 @@ function openAddRoute() {
   document.getElementById('newTo').value = '';
   document.getElementById('newFromCode').value = '';
   document.getElementById('newToCode').value = '';
+  document.getElementById('newFromNodeId').value = '';
+  document.getElementById('newToNodeId').value = '';
   document.getElementById('newDatesChips').innerHTML = '';
   document.getElementById('newEmailTo').value = '';
   document.getElementById('newNtfyTopic').value = '';
@@ -1159,6 +1166,8 @@ async function saveNewRoute() {
     body: JSON.stringify({
       from_code: fromCode, from_name: fromName,
       to_code:   toCode,   to_name:   toName,
+      from_node_id: document.getElementById('newFromNodeId').value,
+      to_node_id:   document.getElementById('newToNodeId').value,
       dates: newDates, active: true,
       email_to:   document.getElementById('newEmailTo').value.trim(),
       ntfy_topic: document.getElementById('newNtfyTopic').value.trim(),
@@ -1433,15 +1442,17 @@ async function acSearch(inputId, codeId, listId) {
   }, 300);
 }
 
-function acSelect(inputId, codeId, listId, name, code) {
+function acSelect(inputId, codeId, listId, name, code, nodeId) {
   document.getElementById(inputId).value = name;
   document.getElementById(codeId).value  = code;
+  const nodeIdField = document.getElementById(codeId.replace('Code', 'NodeId'));
+  if (nodeIdField) nodeIdField.value = nodeId || '';
   document.getElementById(listId).classList.remove('open');
 }
 
 function acSelectIdx(inputId, codeId, listId, i) {
   const it = (acResults[listId] || [])[i];
-  if (it) acSelect(inputId, codeId, listId, it.name, it.code);
+  if (it) acSelect(inputId, codeId, listId, it.name, it.code, it.node_id);
 }
 
 // При потере фокуса — если код не выбран, берём первый результат
@@ -1451,7 +1462,7 @@ function acBlur(inputId, codeId, listId) {
     if (codeEl.value) return; // уже выбрано
     const items = acResults[listId] || [];
     if (items.length > 0) {
-      acSelect(inputId, codeId, listId, items[0].name, items[0].code);
+      acSelect(inputId, codeId, listId, items[0].name, items[0].code, items[0].node_id);
     }
   }, 200);
 }

@@ -269,13 +269,18 @@ def send_email(cfg, subject, body, email_to=None):
 
 # ── ntfy ──────────────────────────────────────────────────────────
 
-def send_ntfy(cfg, title, body, ntfy_topic=None):
+def send_ntfy(cfg, title, body, ntfy_topic=None, click_url=None):
     url   = cfg.get("ntfy_url", "").rstrip("/")
     topic = (ntfy_topic or cfg.get("ntfy_topic", "")).strip()
     if not url or not topic:
         log.warning("ntfy не настроен (нет url или topic)")
         return False
-    headers = {"Content-Type": "text/plain; charset=utf-8"}
+    headers = {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Title": title.encode("utf-8").decode("latin-1", errors="replace"),
+    }
+    if click_url:
+        headers["Click"] = click_url
     token    = cfg.get("ntfy_token", "").strip()
     ntfy_user = cfg.get("ntfy_user", "").strip()
     ntfy_pass = cfg.get("ntfy_password", "").strip()
@@ -292,6 +297,9 @@ def send_ntfy(cfg, title, body, ntfy_topic=None):
     except Exception as e:
         log.error(f"Ошибка ntfy: {e}")
         return False
+
+_RU_MONTHS = ["января","февраля","марта","апреля","мая","июня",
+              "июля","августа","сентября","октября","ноября","декабря"]
 
 # ── Мониторинг ────────────────────────────────────────────────────
 
@@ -350,22 +358,44 @@ def monitor_loop():
             by_date  = entry["by_date"]
             email_to = route.get("email_to", "").strip()
 
-            lines = [f"Найдены свободные места!\n{route['from_name']} → {route['to_name']}\n"]
+            from_node  = route.get("from_node_id", "")
+            to_node    = route.get("to_node_id", "")
+            ntfy_topic = route.get("ntfy_topic", "").strip()
+
+            # ── Email: подробное письмо со всеми датами ──
+            email_lines = [f"Найдены свободные места!\n{route['from_name']} → {route['to_name']}\n"]
             for date_str, trains in sorted(by_date.items()):
-                lines.append(f"\n{date_str}:")
+                email_lines.append(f"\n{date_str}:")
                 for t in trains:
                     h, m = divmod(int(t["duration"] or 0), 60)
-                    lines.append(f"  Поезд {t['number']}  {t['depart'][11:16]}→{t['arrive'][11:16]}  {h}ч{m:02d}м  {t['total_seats']} мест")
+                    email_lines.append(f"  Поезд {t['number']}  {t['depart'][11:16]}→{t['arrive'][11:16]}  {h}ч{m:02d}м  {t['total_seats']} мест")
                     for car_type, g in t["cars"].items():
                         seats = g["total"] or g["lower"]+g["upper"]+g["lower_side"]+g["upper_side"]
                         if seats:
                             price = f"от {g['min_price']:,.0f}₽".replace(",","_") if g["min_price"] else ""
-                            lines.append(f"    • {g['name']}: {seats} мест {price}")
-            lines.append("\nhttps://ticket.rzd.ru/")
+                            email_lines.append(f"    • {g['name']}: {seats} мест {price}")
+                if from_node and to_node:
+                    d = datetime.strptime(date_str, "%Y-%m-%d")
+                    url_date = f"{d.year}-{d.month}-{d.day}"
+                    email_lines.append(f"  https://ticket.rzd.ru/searchresults/v/1/{from_node}/{to_node}/{url_date}?adult=1")
+            if not (from_node and to_node):
+                email_lines.append("\nhttps://ticket.rzd.ru/")
             subject = f"РЖД: билеты {route['from_name']} → {route['to_name']}"
             if email_to:
-                send_email(cfg, subject, "\n".join(lines), email_to=email_to)
-            send_ntfy(cfg, subject, "\n".join(lines), ntfy_topic=route.get("ntfy_topic", "").strip())
+                send_email(cfg, subject, "\n".join(email_lines), email_to=email_to)
+
+            # ── ntfy: одно короткое уведомление на каждую дату ──
+            for date_str in sorted(by_date.keys()):
+                d = datetime.strptime(date_str, "%Y-%m-%d")
+                date_fmt = f"{d.day} {_RU_MONTHS[d.month - 1]} {d.year}"
+                ntfy_title = f"{route['from_name']} → {route['to_name']}"
+                ntfy_body  = f"Есть билеты на {date_fmt}"
+                if from_node and to_node:
+                    url_date  = f"{d.year}-{d.month}-{d.day}"
+                    click_url = f"https://ticket.rzd.ru/searchresults/v/1/{from_node}/{to_node}/{url_date}?adult=1"
+                else:
+                    click_url = "https://ticket.rzd.ru/"
+                send_ntfy(cfg, ntfy_title, ntfy_body, ntfy_topic=ntfy_topic, click_url=click_url)
 
         save_state(state)
 
@@ -553,7 +583,8 @@ def station_search():
             label = item.get("name", "")
             if region:
                 label += f" ({region.split(',')[0]})"
-            results.append({"name": label, "code": code})
+            node_id = item.get("nodeId") or item.get("id") or ""
+            results.append({"name": label, "code": code, "node_id": node_id})
             if len(results) >= 5:
                 break
         # Потом конкретные ж/д станции
@@ -565,7 +596,8 @@ def station_search():
             label = item.get("name", "")
             if region:
                 label += f" — {region.split(',')[0]}"
-            results.append({"name": label, "code": code})
+            node_id = item.get("nodeId") or item.get("id") or ""
+            results.append({"name": label, "code": code, "node_id": node_id})
             if len(results) >= 12:
                 break
         return jsonify(results)
